@@ -8,11 +8,11 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          # 确保检出保留文件权限
+          # 修正后的稀疏检出配置
           sparse-checkout: |
-            /*
+            *
             !.gitattributes
-          persist-credentials: false
+          show-progress: false  # 避免冗长输出
 
       - name: Set up JDK 11
         uses: actions/setup-java@v3
@@ -20,59 +20,41 @@ jobs:
           java-version: '11'
           distribution: 'zulu'
           cache: 'gradle'
-          check-latest: true
+          cache-dependency-path: '**/build.gradle'  # 精确缓存控制
 
-      # 关键修复：显式设置文件权限
       - name: Fix execution permissions
+        timeout-minutes: 2
         run: |
-          # 修复gradlew权限
-          if [ -f "gradlew" ]; then
-            chmod +x gradlew
-            echo "✅ gradlew permissions updated"
-          else
-            echo "❌ gradlew not found"
-            exit 1
-          fi
-          
-          # 修复其他可能丢失权限的文件
-          find . -name '*.sh' -exec chmod +x {} \;
+          # 分步权限修复
+          echo "Current gradlew permissions: $(stat -c '%A %a %n' gradlew)"
+          find . -type f -name 'gradlew' -exec chmod +x {} \;
+          find . -type f -name '*.sh' -exec chmod +x {} \;
+          echo "Updated permissions: $(stat -c '%A %a %n' gradlew)"
 
       - name: Build With Gradle
-        timeout-minutes: 15
+        env:
+          GRADLE_OPTS: -Dorg.gradle.daemon=false -Xmx4g
         run: |
-          # 带诊断信息的清理
-          ./gradlew clean --stacktrace || (echo "##[error]Clean failed"; exit 1)
-          
-          # 带资源监控的构建
+          ./gradlew clean --stacktrace
           ./gradlew assembleRelease \
-            --build-cache \
             --parallel \
-            --no-daemon \
-            --warning-mode all \
-            -Dorg.gradle.java.home="$JAVA_HOME" \
-            -Dorg.gradle.vfs.watch=true \
-            -PciBuild=true
+            --no-configuration-cache \
+            --warning-mode=fail
 
       - name: Prepare App
         run: |
-          APK_SOURCE="$GITHUB_WORKSPACE/app/build/outputs/apk/release"
+          APK_SOURCE="${{ github.workspace }}/app/build/outputs/apk/release"
+          echo "APK源目录结构:"
+          ls -lhR $APK_SOURCE || true  # 失败时仍显示结构
           
-          # 带时间戳的日志
-          echo "[$(date '+%Y-%m-%d %H:%M:%S')] APK源目录: $APK_SOURCE"
-          
-          if [ ! -d "$APK_SOURCE" ]; then
-            echo "##[error]APK directory missing at $APK_SOURCE"
-            ls -R $GITHUB_WORKSPACE/app/build/outputs || true
-            exit 1
-          fi
+          mkdir -p "${{ github.workspace }}/apk"
+          rsync -av --progress "$APK_SOURCE/" "${{ github.workspace }}/apk/" \
+            --include='*.apk' --exclude='*'
 
-          mkdir -p "$GITHUB_WORKSPACE/apk"
-          find "$APK_SOURCE" -name '*.apk' -exec cp -v {} "$GITHUB_WORKSPACE/apk/" \;
-
-      - name: Upload App To Artifact
+      - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: box-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}
+          name: apk_${{ github.run_number }}_${{ github.sha_short }}
           path: ${{ github.workspace }}/apk/*.apk
-          retention-days: 7
-          if-no-files-found: error
+          retention-days: 3
+          compression-level: 9
