@@ -57,5 +57,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: box-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ github.workspace }}/apk/*.apk
+          path: ${{ github.workspace }}/apk/*
           retention-days: 7  # 添加自动清理策略
