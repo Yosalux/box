@@ -12,6 +12,7 @@ jobs:
           sparse-checkout: |
             *
             !.gitattributes
+            sparse-checkout-cone-mode: false  # 关键参数
           show-progress: false  # 避免冗长输出
 
       - name: Set up JDK 11
