@@ -33,6 +33,7 @@ jobs:
       # 关键修改3：添加Gradle版本检查（可选）
       - name: Verify Gradle Version
         run: |
+          chmod +x gradlew
           ./gradlew --version
           echo "Gradle home: ${{ env.GRADLE_HOME }}"
 
