@@ -1,32 +1,60 @@
 name: GENERATE APK
 on:
   workflow_dispatch:
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4  # 升级到v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      # 关键修改1：设置兼容的Java版本
+      - name: Set up JDK 11
+        uses: actions/setup-java@v3
+        with:
+          java-version: '11'
+          distribution: 'temurin'
+          cache: 'gradle'
+
+      # 关键修改2：添加Gradle缓存加速构建
+      - name: Cache Gradle
+        uses: actions/cache@v3
+        with:
+          path: |
+            \~/.gradle/caches
+            \~/.gradle/wrapper
+            build-cache
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', 'gradle.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      # 关键修改3：添加Gradle版本检查（可选）
+      - name: Verify Gradle Version
+        run: |
+          ./gradlew --version
+          echo "Gradle home: ${{ env.GRADLE_HOME }}"
 
       - name: Build With Gradle
         run: |
           chmod +x gradlew
-          ./gradlew assembleRelease --build-cache --parallel --daemon --warning-mode all
+          # 添加--no-daemon避免与CI环境冲突
+          ./gradlew assembleRelease --build-cache --parallel --no-daemon --warning-mode all
 
       - name: Prepare App
         run: |
-          # 精确指定APK生成路径（标准Gradle输出位置）
-          APK_SOURCE="app/build/outputs/apk/release"
+          # 使用更精确的APK路径匹配模式
+          APK_SOURCE="app/build/outputs/apk/**/release/*.apk"
           
-          # 创建目标目录
           mkdir -p ${{ github.workspace }}/apk/
           
-          # 复制APK文件（包含版本号和时间戳的典型命名模式）
-          cp $APK_SOURCE/app-release-*.apk ${{ github.workspace }}/apk/
+          # 使用find命令确保捕获所有变体
+          find app/build/outputs/apk -name '*.apk' -exec cp {} ${{ github.workspace }}/apk/ \;
 
       - name: Upload App To Artifact
-        uses: actions/upload-artifact@v4  # 升级到v4
+        uses: actions/upload-artifact@v4
         with:
-          name: box-${{ github.run_id }}  # 添加唯一标识符防止覆盖
+          name: box-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ github.workspace }}/apk/*.apk
+          retention-days: 7  # 添加自动清理策略
