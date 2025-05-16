@@ -5,54 +5,28 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4  # 升级到v4
         with:
           fetch-depth: 0
-          sparse-checkout: |  # 仅定义路径模式
-            /*
-            !.gitattributes
-          # 必须显式禁用 cone 模式
-      - name: Disable cone mode
-        run: git config core.sparseCheckoutCone false
-      # 重新应用模式
-      - name: Apply sparse checkout
-        run: git sparse-checkout reapply
-
-      - name: Set up JDK 11
-        uses: actions/setup-java@v3
-        with:
-          java-version: '11'
-          distribution: 'zulu'
-          cache: 'gradle'
-          cache-dependency-path: '**/build.gradle'
-
-      - name: Fix execution permissions
-        timeout-minutes: 2
-        run: |
-          find . -type f -name 'gradlew' -exec chmod +x {} \;
-          find . -type f -name '*.sh' -exec chmod +x {} \;
 
       - name: Build With Gradle
-        env:
-          GRADLE_OPTS: -Dorg.gradle.daemon=false -Xmx4g
         run: |
-          ./gradlew clean --stacktrace
-          ./gradlew assembleRelease \
-            --parallel \
-            --no-configuration-cache \
-            --warning-mode=fail
+          chmod +x gradlew
+          ./gradlew assembleRelease --build-cache --parallel --daemon --warning-mode all
 
       - name: Prepare App
         run: |
-          APK_SOURCE="${{ github.workspace }}/app/build/outputs/apk/release"
-          mkdir -p "${{ github.workspace }}/apk"
-          rsync -av --progress "$APK_SOURCE/" "${{ github.workspace }}/apk/" \
-            --include='*.apk' --exclude='*'
+          # 精确指定APK生成路径（标准Gradle输出位置）
+          APK_SOURCE="app/build/outputs/apk/release"
+          
+          # 创建目标目录
+          mkdir -p ${{ github.workspace }}/apk/
+          
+          # 复制APK文件（包含版本号和时间戳的典型命名模式）
+          cp $APK_SOURCE/app-release-*.apk ${{ github.workspace }}/apk/
 
-      - name: Upload Artifact
-        uses: actions/upload-artifact@v4
+      - name: Upload App To Artifact
+        uses: actions/upload-artifact@v4  # 升级到v4
         with:
-          name: apk_${{ github.run_number }}_${{ github.sha_short }}
+          name: box-${{ github.run_id }}  # 添加唯一标识符防止覆盖
           path: ${{ github.workspace }}/apk/*.apk
-          retention-days: 3
-          compression-level: 9
