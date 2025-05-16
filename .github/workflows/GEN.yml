@@ -1,31 +1,32 @@
 name: GENERATE APK
-
 on:
-  #  push:
-  #    branches:
-  #      - main
-  #  pull_request:
   workflow_dispatch:
-
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4  # 升级到v4
         with:
           fetch-depth: 0
+
       - name: Build With Gradle
         run: |
           chmod +x gradlew
-          ./gradlew assemblerelease --build-cache --parallel --daemon --warning-mode all
+          ./gradlew assembleRelease --build-cache --parallel --daemon --warning-mode all
+
       - name: Prepare App
         run: |
+          # 精确指定APK生成路径（标准Gradle输出位置）
+          APK_SOURCE="app/build/outputs/apk/release"
+          
+          # 创建目标目录
           mkdir -p ${{ github.workspace }}/apk/
-          for file in `find ~ -name "*.apk" -print`; do
-            mv "$file" ${{ github.workspace }}/apk/
-          done
+          
+          # 复制APK文件（包含版本号和时间戳的典型命名模式）
+          cp $APK_SOURCE/app-release-*.apk ${{ github.workspace }}/apk/
+
       - name: Upload App To Artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4  # 升级到v4
         with:
-          name: box
-          path: ${{ github.workspace }}/apk/*
+          name: box-${{ github.run_id }}  # 添加唯一标识符防止覆盖
+          path: ${{ github.workspace }}/apk/*.apk
